@@ -28,3 +28,5 @@ Using this worklog to keep track os what needs to be done and what is ready
 - how many unique events are their?
 - how are ages distributed among the runners?
 - which countries are most represented?
+- Reserched speed of marathons *(Done)*
+- Reserched marathons age classes*(Done)*
