@@ -1,6 +1,83 @@
 import re 
 from pyspark.sql import DataFrame
-from pyspark.sql.functions import when, concat, regexp_extract, lit, col, regexp_replace, to_date, broadcast
+from pyspark.sql.functions import when, concat, regexp_extract, lit, col, regexp_replace, to_date, broadcast, round, coalesce, trim, lower, split, nullif
+
+def calculate_performance_metrics(df: DataFrame, dist_col: str = "event_distance_length", perf_col: str = "athlete_performance", event_col: str = "event_name") -> DataFrame:
+    """
+    Standardizes distance and time.
+    Combines athlete performance with event distance length to get speed_km_h, distance_km and duration_h. It also gives event_type to clarify whether it is a distance event, time event or endurance event.
+    """
+    return (
+        df
+        # Checks for fotrally
+        .withColumn("is_fotrally", col(event_col).rlike("(?i)fotrally|maratonmarschen"))
+
+        # Checks data to evalute marathon
+        .withColumn("ev_val_str", nullif(regexp_extract(col(dist_col), r"^([\d\.:]+)", 1), lit("")))
+        .withColumn("ev_val", 
+                    when(col("ev_val_str").contains(":"), 
+                         split(col("ev_val_str"), ":").getItem(0).cast("float") + 
+                         (split(col("ev_val_str"), ":").getItem(1).cast("float") / 60)
+                    ).otherwise(col("ev_val_str").cast("float")))
+        .withColumn("ev_unit", lower(regexp_extract(col(dist_col), r"^[\d\.:]+\s*([a-zA-Z]+)", 1)))
+        .withColumn("event_type", 
+                    when(col("is_fotrally"), "Endurance")
+                    .when(col("ev_unit").isin("h", "d"), "Time")
+                    .otherwise("Distance"))
+        .withColumn("ev_dist_km", 
+                    when(col("ev_unit").isin("km", "k"), col("ev_val"))
+                    .when(col("ev_unit").isin("mi", "mile", "miles"), col("ev_val") * 1.60934))
+        .withColumn("ev_time_h", 
+                    when(col("ev_unit") == "h", col("ev_val"))
+                    .when(col("ev_unit") == "d", col("ev_val") * 24))
+
+
+        # Interpreting athlete performance depending on race type
+        # Clean up incorrect units (like "km" at the end of a time) to not fool regex
+        .withColumn("perf_clean", trim(regexp_replace(col(perf_col), r"[a-zA-Z\s]+$", "")))
+
+        # Distance calculation
+        .withColumn("perf_dist_val", nullif(regexp_extract(col("perf_clean"), r"^([\d\.]+)", 1), lit("")).cast("float"))
+        .withColumn("perf_dist_km", 
+                    when(col("event_type") == "Time", 
+                         when(lower(col(perf_col)).contains("mi"), col("perf_dist_val") * 1.60934)
+                         .otherwise(col("perf_dist_val"))))
+        
+        # Time calculation
+        .withColumn("perf_d", nullif(regexp_extract(col("perf_clean"), r"(\d+)d", 1), lit("")).cast("float"))
+        .withColumn("perf_h", nullif(regexp_extract(col("perf_clean"), r"(?:^|\s)(\d+):", 1), lit("")).cast("float"))
+        .withColumn("perf_m", nullif(regexp_extract(col("perf_clean"), r":(\d{2}):", 1), lit("")).cast("float"))
+        .withColumn("perf_s", nullif(regexp_extract(col("perf_clean"), r":(\d{2})$", 1), lit("")).cast("float"))
+        
+        # We calculate perf_time_h for ALL time formats, and force it to run against Fotrally
+        .withColumn("perf_time_h", 
+                    when((col("event_type") == "Distance") | col("is_fotrally"), 
+                         (coalesce(col("perf_d"), lit(0)) * 24) + 
+                         coalesce(col("perf_h"), lit(0)) + 
+                         (coalesce(col("perf_m"), lit(0)) / 60) + 
+                         (coalesce(col("perf_s"), lit(0)) / 3600)))
+        # Set to NULL if the time was exactly 0
+        .withColumn("perf_time_h", when(col("perf_time_h") > 0, col("perf_time_h")).otherwise(None))
+
+        # Combine the results with fotrally
+        .withColumn("duration_h", round(
+            when(col("is_fotrally"), col("perf_time_h")) # Om Fotrally: Hämta atletens tid!
+            .otherwise(coalesce(col("ev_time_h"), col("perf_time_h"))), 3))
+        
+        .withColumn("distance_km", round(
+            when(col("is_fotrally"), col("duration_h") * 5.0) # Om Fotrally: Tid * 5 km/h
+            .otherwise(coalesce(col("ev_dist_km"), col("perf_dist_km"))), 3))
+        
+        
+        # Calculate speed
+        .withColumn("speed_km_h", 
+                    when(col("is_fotrally"), lit(5.0)) # Om Fotrally: Alltid 5 km/h
+                    .otherwise(when(col("duration_h") > 0, round(col("distance_km") / col("duration_h"), 2)).otherwise(None)))
+
+        # clean up all help columns
+        .drop("is_fotrally", "ev_val_str", "ev_val", "ev_unit", "ev_dist_km", "ev_time_h", 
+              "perf_clean", "perf_dist_val", "perf_dist_km", "perf_d", "perf_h", "perf_m", "perf_s", "perf_time_h", dist_col, perf_col)
+    )
 
 def transform_event_dates(df: DataFrame, date_column: str) -> DataFrame:
     """
@@ -101,33 +178,48 @@ def extract_event_name_details(df: DataFrame, event_col: str = "event_name") -> 
         )
     )
 
-def enrich_with_countries(df_events: DataFrame, df_dim_countries: DataFrame) -> DataFrame:
+def append_country_name(df: DataFrame, df_dim_countries: DataFrame, code_col: str, new_name_col: str) -> DataFrame:
     """
-    Turns on the dimension table for countries and handles known corner cases
-    (e.g. Wings for Life World Run).
+    General function to translate a 3-letter code into a full country name.
     """
-    df_dim_ready = df_dim_countries.withColumnRenamed("country_name", "country_name_full")
+    df_dim_ready = df_dim_countries.withColumnRenamed("country_name", new_name_col)
 
     return (
-        df_events.alias("events")
+        df
+        .withColumn(code_col, upper(col(code_col)))
+        
         .join(
-            broadcast(df_dim_ready).alias("countries"),
-            col("events.event_country_code") == col("countries.iso_code"),
+            broadcast(df_dim_ready),
+            col(code_col) == col("iso_code"),
             "left"
         )
-        # Hantera globala lopp utan specifikt land
+
         .withColumn(
-            "country_name_full",
-            when(col("event_name").contains("Wings for Life"), "Global")
-            .otherwise(col("country_name_full"))
+            new_name_col,
+            when(col(code_col) == "XXX", "Unknown")           # Hantera kända XXX-koder
+            .when(col(new_name_col).isNull(), "Unknown")
+            .otherwise(col(new_name_col))
         )
-        .withColumn(
-            "event_country_code",
-            when(col("event_name").contains("Wings for Life"), "GLO")
-            .otherwise(col("event_country_code"))
-        )
-        # Droppa join-nyckeln så vi håller pipelinen ren
+        # Drop the join key
         .drop("iso_code")
+    )
+
+def handle_global_events(df: DataFrame, name_col: str = "event_country_name", code_col: str = "event_country_code") -> DataFrame:
+    """
+    Handles special cases for races that lack a specific country (e.g. Wings for Life).
+    Does NOT affect the athletes countries.
+    """
+    return (
+        df.withColumn(
+            name_col,
+            when(col("event_name").contains("Wings for Life"), "Global")
+            .otherwise(col(name_col))
+        )
+        .withColumn(
+            code_col,
+            when(col("event_name").contains("Wings for Life"), "GLO")
+            .otherwise(col(code_col))
+        )
     )
 
 def to_snake_case(name):
