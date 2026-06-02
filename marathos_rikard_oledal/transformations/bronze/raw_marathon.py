@@ -2,7 +2,7 @@ from pyspark import pipelines as dp
 
 BASE_DIR = "/Volumes/marathos/default/raw"
 
-schema = spark.read.format("csv").options(header=True, inferSchema=True).load(f"{BASE_DIR}/countries/code_countries.csv").schema
+schema = spark.read.format("csv").options(header=True, inferSchema=True).load(f"{BASE_DIR}/data/TWO_CENTURIES_OF_UM_RACES.csv").schema
 
 @dp.table(
     name="marathos.bronze.raw_marathon",
@@ -13,5 +13,5 @@ schema = spark.read.format("csv").options(header=True, inferSchema=True).load(f"
         "delta.minWriterVersion": "5"
     }
 )
-def raw_supply_chain():
+def raw_marathon():
     return spark.readStream.format("csv").options(header=True, encoding="UTF-8").schema(schema).load(f"{BASE_DIR}/data")
