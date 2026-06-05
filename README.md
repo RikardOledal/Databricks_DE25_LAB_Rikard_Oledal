@@ -1,4 +1,4 @@
-# 🏃‍♂️ Ultramarathon Data Engineering Platform (Databricks)
+# Ultramarathon Data Engineering Platform (Databricks)
 
 ![Databricks](https://img.shields.io/badge/Databricks-FF3621?style=for-the-badge&logo=Databricks&logoColor=white)
 ![PySpark](https://img.shields.io/badge/PySpark-E25A1C?style=for-the-badge&logo=Apache%20Spark&logoColor=white)
@@ -6,7 +6,7 @@
 
 This repository contains an end-to-end Data Engineering pipeline built in **Databricks** as part of a Cloud and Big Data lab at STI. The project processes and models historical ultramarathon data to enable advanced analytics and AI/BI querying.
 
-## 🎥 Video Presentation
+## Video Presentation
 *(Click the image below to watch the project presentation)*
 
 <a href="https://www.youtube.com/watch?v=MG5afHCvnNc">
@@ -50,7 +50,7 @@ The Gold Data Marts are highly optimized to be used with **Databricks Genie**. T
 
 ---
 
-## 🔗 References & Research
+## References & Research
 - [Northstowe Half Marathon 2027 - Age Groups](https://northstowehalf.co.uk/age-groups/)
 - [Wikipedia - Marathon world record progression](https://en.wikipedia.org/wiki/Marathon_world_record_progression)
 - [Olympics.com - Fauja Singh (Oldest Marathon Runner)](https://www.olympics.com/en/news/who-is-fauja-singh-oldest-indian-origin-british-marathon-runner)
