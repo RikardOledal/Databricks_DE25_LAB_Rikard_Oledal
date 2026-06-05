@@ -1,0 +1,37 @@
+Table fct_results {
+  result_id integer
+  event_id integer
+  athlete_id integer
+  athlete_age integer
+  athlete_age_category string
+  result_time_h float
+  result_distance_km float
+  result_speed_km_h float
+  date_id integer
+}
+Table dim_event {
+  event_id integer [primary key, ref:< fct_results.event_id]
+  event_name string
+  event_type string
+  year_of_event integer
+  event_start_date date
+  event_end_date date
+  event_country_name string
+  event_country_code string
+  
+}
+Table dim_athlete {
+  athlete_id integer [primary key, ref:< fct_results.athlete_id]
+  athlete_gender string
+  athlete_country_name string
+  athlete_country_code string
+  athlete_birth_year integer
+}
+
+Table dim_date {
+  date_id integer [primary key, ref:< fct_results.date_id]
+  date date
+  year integer
+  month integer
+  weekday string
+}

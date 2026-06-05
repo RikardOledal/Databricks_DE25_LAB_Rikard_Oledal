@@ -3,18 +3,20 @@ USE SCHEMA gold;
 
 CREATE OR REPLACE VIEW marathos.gold.mart_distance AS
 SELECT 
-    e.event_name,
-    e.event_country_name,
-    r.result_distance_km AS distance,
+    e.event_name AS event,
+    e.event_country_name AS event_country,
+    r.result_distance_km AS event_distance,
     e.event_type,
-    d.year,
+    d.year AS event_year,
+    d.month AS event_month,
+    d.weekday AS event_weekday,
     d.date AS date,
     a.athlete_gender,
-    a.athlete_country_name,
+    a.athlete_country_name AS athlete_country,
     r.athlete_age,
     r.athlete_age_category,
-    r.result_time_h,
-    r.result_speed_km_h
+    r.result_time_h AS athlete_time_h,
+    r.result_speed_km_h AS athlete_speed_km_h
 FROM fct_results r
 JOIN dim_event e ON r.event_id = e.event_id
 JOIN dim_athlete a ON r.athlete_id = a.athlete_id
